@@ -1,0 +1,213 @@
+---
+title: "UNGA-UNSC Article"
+author: "Jayati Sharma"
+date: "2023-01-18"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(readtext) #handling text files
+library(dplyr) #data manipulation
+library(tidyverse) #for data wrangling and data manipulation
+library(ggplot2) #data visualizations
+library(viridis) #for colours
+library(RColorBrewer) #for colors
+library(readxl) #importing excel files
+library(stringr) #string manipulation
+library(ggthemes) #for visualization themes
+library(classInt) #choosing univariate class intervals
+library(quanteda) #for textual analysis
+library(quanteda.textplots) #plotting functions for visualizing textual data
+library(quanteda.textstats) #for textual statistics
+library(tokenizers) #convert natural language text into tokens
+library(furrr)
+
+#setting directory
+DATA_DIR <- "C:/Users/HP/Downloads/TXT"
+```
+
+```{r import files, include = FALSE}
+
+#Reading in text files
+ungd_files <- readtext(paste0(DATA_DIR, "//*"),
+                                 docvarsfrom = "filenames", 
+                                 dvsep= "_", 
+                                 docvarnames = c("Country", "Session", "Year"))
+
+#changing row.names to have only country_year, rather than folder pathway from `readtext`.
+
+ ungd_files$doc_id <- str_replace(ungd_files$doc_id , ".txt", "") %>%
+   str_replace(. , "_\\d{2}", "")
+``` 
+
+```{r Creating corpus, include=FALSE}
+
+#Creating corpus of speeches
+ungd_corpus <- corpus(ungd_files, text_field = "text")
+```
+
+```{r Converting into tokens, echo=FALSE}
+
+#converting speeches into tokens
+  token_all_speeches <- tokens(ungd_corpus,what = "word",remove_punct = TRUE, remove_symbols = TRUE,
+  remove_numbers = TRUE, remove_url = TRUE, remove_separators = TRUE,
+  split_hyphens = TRUE, include_docvars = FALSE, padding = FALSE)
+
+#removing stopwords and converting to lowercase
+  token_all_speeches <- tokens_remove(token_all_speeches, c(stopwords("english")))
+  token_all_speeches <- tokens_tolower(token_all_speeches)
+```
+
+```{r all words , echo = FALSE}
+
+#making a document-feature matrix from the tokens
+dfm_token_all_speeches <- dfm(
+token_all_speeches,
+tolower = TRUE,
+remove_padding = FALSE,
+verbose = quanteda_options("verbose"))
+
+#creating a dataframe with frequency of each word spoken in each year
+freq_words_all_speeches <- textstat_frequency(dfm_token_all_speeches, groups = ungd_files$Year)
+```
+
+```{r terrorism, echo=FALSE}
+
+#creating a subset of the dataframe for words related to terrorism
+freq_terrorism <- subset(freq_words_all_speeches, freq_words_all_speeches$feature %in% c("terrorism", "terrorist", "terrorists"))
+
+#calculating frequency
+terrorism_words <- freq_terrorism %>%
+  group_by(group) %>% summarise(Times = sum(frequency))
+
+#plotting it
+ggplot(terrorism_words, aes(x = group, y = Times)) +
+    xlab("Year") + 
+    ylab("Frequency") +
+  geom_line(group = 1, color = '#009cde', lwd = 1) +
+  ggtitle("Mentions of Terrorism Peaked at the Time of 9/11",subtitle = "Number of Times Leaders Mentioned Terrorism in UNGD Speeches Between 1970-2020") +
+  geom_point(shape = 1, size = 1.5)+
+  labs(caption = "Data Source: United Nations General Debate Corpus by Jankin Mikhaylov, Slava and Baturo, Alexander and Dasandi, Niheer ; Analysis by CPC Analytics")+
+  scale_x_discrete(breaks = seq(1970, 2020, by= 5))+
+  theme_fivethirtyeight()
+
+ggsave(filename = "terrorism_words.jpg", width = 10, height = 4)
+
+#looking at the context in which terrorism was spoken of
+context_terrorism <- kwic(token_all_speeches, c("terrorism", "terrorist", "terrorists"), window = 4)
+context_terrorism <- cbind(context_terrorism, str_split_fixed(context_terrorism$docname, "_", 2))
+
+#looking at the countries which spoke about terrorism
+country_speaking_terrorism <- context_terrorism %>%
+  group_by(`1`) %>%
+  summarise(country_terrorism_freq = n())
+```
+
+```{r refugees}
+
+#creating a subset of the dataframe for words related to refugees
+
+freq_refugees <- subset(freq_words_all_speeches, freq_words_all_speeches$feature %in% c("refugee", "refugees"))
+
+#calcualting frequency
+refugees_words <- freq_refugees %>%
+  group_by(group) %>% summarise(Times = sum(frequency))
+
+#plotting it
+ggplot(refugees_words, aes(x = group, y = Times)) +
+    xlab("Year") + 
+    ylab("Frequency") +
+  geom_line(group = 1, color = '#009cde', lwd = 1) +
+  ggtitle("Mentions of Refugees Peaked during 2016 Refugee Crisis",subtitle = "Number of Times Leaders Mentioned Refugees in UNGD Speeches Between 1970-2020") +
+  geom_point(shape = 1, size = 1.5)+
+  labs(caption = "Data Source: United Nations General Debate Corpus by Jankin Mikhaylov, Slava and Baturo, Alexander and Dasandi, Niheer ; Analysis by CPC Analytics")+
+  scale_x_discrete(breaks = seq(1970, 2020, by= 5))+
+  theme_fivethirtyeight()
+ggsave(filename = "refugees_words.jpg", width = 10, height = 4)
+
+#looking at the context in which it was spoken
+context_refugees <- kwic(token_all_speeches, c("refugee", "refugees"), window = 4)
+context_refugees <- cbind(context_refugees, str_split_fixed(context_refugees$docname, "_", 2))
+
+#frequency of countries that mentioned it
+country_speaking_refugees <- context_refugees %>%
+  group_by(`1`) %>%
+  summarise(country_refugees_freq = n())
+```
+
+```{r climate change, echo=FALSE}
+
+#joining words where climate is succeeded by change
+climate_pattern <- c("climate change")
+climate_token <- tokens_compound(token_all_speeches,pattern = phrase(climate_pattern), join = TRUE, concatenator = "_",)
+
+# a document-feature matrix of the new speeches with climate_change joined 
+climate_dfm_token_all_speeches <- dfm(
+climate_token,
+tolower = TRUE,
+remove_padding = FALSE,
+verbose = quanteda_options("verbose"))
+
+#frequency of all words
+climate_freq_words_all_speeches <- textstat_frequency(climate_dfm_token_all_speeches, groups = ungd_files$Year)
+
+#creating a subset of the dataframe for words related to climate change
+freq_climate_change <- subset(climate_freq_words_all_speeches, climate_freq_words_all_speeches$feature %in% c("climate_change"))
+
+#calculating the frequency
+climate_change_words <- freq_climate_change %>%
+  group_by(group) %>% summarise(Times = sum(frequency))
+
+#plotting it
+ggplot(climate_change_words, aes(x = group, y = Times)) +
+    xlab("Year") + 
+    ylab("Frequency") +
+  geom_line(group = 1, color = '#009cde', lwd = 1) +
+  ggtitle("Recent Rise in the Attention to Climate Change",subtitle = "Number of Times Leaders Mentioned Climate Change in UNGD Speeches between 1970-2020") +
+  geom_point(shape = 1, size = 1.5)+
+  labs(caption = "Data Source: United Nations General Debate Corpus by Jankin Mikhaylov, Slava and Baturo, Alexander and Dasandi, Niheer ; Analysis by CPC Analytics")+
+  scale_x_discrete(breaks = seq(1970, 2020, by= 5))+
+  theme_fivethirtyeight()
+ggsave(filename = "climatechange_words.jpg", width = 10, height = 5)
+
+#looking at the context in which the word was spoken
+context_climate_change <- kwic(climate_token, c("climate_change"), window = 6)
+context_climate_change <- cbind(context_climate_change, str_split_fixed(context_climate_change$docname, "_", 2))
+
+#frequency of the countries mentioning it
+country_speaking_climate <- context_climate_change %>%
+  group_by(`1`) %>%
+  summarise(country_climate_freq = n())
+```
+
+```{r disarmament, echo=FALSE}
+
+#creating a subset of the dataframe for words related to disarmament
+
+freq_disarmament <- subset(freq_words_all_speeches, freq_words_all_speeches$feature %in% c("disarmament"))
+
+#calculating the frequency
+disarmament_words <- freq_disarmament %>%
+  group_by(group) %>% summarise(Times = sum(frequency))
+
+#plotting it
+ggplot(disarmament_words, aes(x = group, y = Times)) +
+    xlab("Year") + 
+    ylab("Frequency") +
+  geom_line(group = 1, color = '#009cde', lwd = 1) +
+  ggtitle("The Disarmament Agenda has Lost Momentum Over the Years",subtitle = "Number of Times Leaders Mentioned Disarmament in UNGD Speeches Between 1970-2020") +
+  geom_point(shape = 1, size = 1.5)+
+  labs(caption = "Data Source: United Nations General Debate Corpus by Jankin Mikhaylov, Slava and Baturo, Alexander and Dasandi, Niheer ; Analysis by CPC Analytics")+
+  scale_x_discrete(breaks = seq(1970, 2020, by= 5))+
+  theme_fivethirtyeight()
+ggsave(filename = "disarmamentwords_words.jpg", width = 10, height = 4)
+
+#context in which the word was spoken
+context_disarmament <- kwic(token_all_speeches, c("disarmament"), window = 4)
+context_disarmament <- cbind(context_disarmament, str_split_fixed(context_disarmament$docname, "_", 2))
+
+#frequency of countries mentioning it
+country_speaking_disarmament <- context_disarmament %>%
+  group_by(`1`) %>%
+  summarise(country_disarmament_freq = n())
+```
