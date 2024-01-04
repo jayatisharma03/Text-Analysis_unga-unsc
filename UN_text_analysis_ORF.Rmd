@@ -23,7 +23,7 @@ library(tokenizers) #convert natural language text into tokens
 library(furrr)
 
 #setting directory
-DATA_DIR <- "C:/Users/HP/Downloads/TXT"
+DATA_DIR <- ""
 ```
 
 ```{r import files, include = FALSE}
